@@ -27,6 +27,7 @@ func (r *Router) Init(ctx context.Context, confFile string) error {
 	// }
 	r.port = 18088
 	r.initPushStreams()
+	r.initPushCallbacks()
 	return r.startGrpcServer(ctx)
 }
 
@@ -44,6 +45,10 @@ func (r *Router) initPushStreams() {
 		ClusterType,
 		RouteType, ListenerType,
 	})
+}
+
+func (r *Router) initPushCallbacks() {
+	r.PushCallbacks.init()
 }
 
 func (r *Router) readConfFile(confFile string) error {

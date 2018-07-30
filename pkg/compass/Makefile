@@ -23,7 +23,7 @@ admin: admin/*.go
 main: *.go
 	go build
 
-build: common envoy router admin main
+build: common envoy routers admin main
 
 all: build
 

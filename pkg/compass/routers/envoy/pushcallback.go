@@ -15,6 +15,10 @@ type pushCallbacks struct {
 	sync.RWMutex
 }
 
+func (pc *pushCallbacks) init() {
+	pc.Callbacks = make(map[string]map[string]*pushCallback)
+}
+
 func (pc *pushCallbacks) create(key1 string, key2 string, ctx context.Context, ch chan error) error {
 	cb := pushCallback{Context: ctx, Channel: ch}
 	pc.Lock()

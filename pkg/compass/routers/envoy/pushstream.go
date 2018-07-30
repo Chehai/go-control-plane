@@ -16,6 +16,7 @@ type pushStreams struct {
 }
 
 func (ps *pushStreams) init(keys []string) {
+	ps.Streams = make(map[string][]*pushStream)
 	for _, k := range keys {
 		ps.Streams[k] = make([]*pushStream, 0)
 	}
