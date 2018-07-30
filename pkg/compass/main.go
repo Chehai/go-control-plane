@@ -1,13 +1,16 @@
 package main
+
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
-	"context"
-	//"github.com/Chehai/go-control-plane/pkg/compass/routers/router"
-	//"github.com/Chehai/go-control-plane/pkg/compass/admin"
+
+	"github.com/envoyproxy/go-control-plane/pkg/compass/admin"
+	"github.com/envoyproxy/go-control-plane/pkg/compass/routers"
 )
+
 func main() {
 	fmt.Println("Compass started")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -19,7 +22,7 @@ func main() {
 		cancel()
 	}()
 
-	r := router.NewEnvoyRouter()
+	r := routers.NewEnvoyRouter()
 	r.Init(ctx, "todo")
 	admin.Init(ctx, "todo", r)
 
