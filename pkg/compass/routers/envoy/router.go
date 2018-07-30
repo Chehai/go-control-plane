@@ -110,7 +110,7 @@ func (r *EnvoyRouter) readConfFile(confFile string) error {
 
 const grpcMaxConcurrentStreams = 1000000
 
-func (r *EnvoyRouter) initGrpcServer(ctx context.Context) error {
+func (r *EnvoyRouter) startGrpcServer(ctx context.Context) error {
 	var grpcOptions []grpc.ServerOption
 	grpcOptions = append(grpcOptions, grpc.MaxConcurrentStreams(grpcMaxConcurrentStreams))
 	grpcServer := grpc.NewServer(grpcOptions...)
@@ -133,15 +133,21 @@ func (r *EnvoyRouter) initGrpcServer(ctx context.Context) error {
 		}
 	}()
 
-	<-ctx.Done()
-	grpcServer.GracefulStop()
+	go func() {
+		<-ctx.Done()
+		grpcServer.GracefulStop()
+	}
+
 	return nil
 }
 
 func (r *EnvoyRouter) Init(ctx context.Context, confFile string) {
-	r.readConfFile(confFile)
+	err := r.readConfFile(confFile)
+	if err != nil {
+		return err
+	}
 	r.initPushStreams()
-	r.initGrpcServer(ctx)
+	return r.startGrpcServer(ctx)
 }
 
 func (r *EnvoyRouter) UpsertCluster(ctx context.Context, cluster *Cluster) error {
