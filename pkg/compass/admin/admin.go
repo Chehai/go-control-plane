@@ -3,9 +3,10 @@ package admin
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/envoyproxy/go-control-plane/pkg/compass/common"
 	"github.com/envoyproxy/go-control-plane/pkg/compass/routers"
@@ -31,7 +32,9 @@ func readConfFile(confFile string) error {
 
 func startServer(ctx context.Context, port uint, rt routers.Router) error {
 	http.HandleFunc("/upsert_vhost/", httpHandleFunc(ctx, rt, upsertCluster))
-	go log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	go func() {
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	}()
 	return nil
 }
 

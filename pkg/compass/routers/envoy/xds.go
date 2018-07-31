@@ -70,7 +70,7 @@ func (r *Router) startGrpcServer(ctx context.Context) error {
 	v2.RegisterRouteDiscoveryServiceServer(grpcServer, r)
 	v2.RegisterListenerDiscoveryServiceServer(grpcServer, r)
 
-	log.WithFields(log.Fields{"port": r.port}).Infof("Envoy gRPC Server listening on port %v", r.port)
+	log.WithFields(log.Fields{"port": r.port}).Infof("Envoy Management Server listening on port %v", r.port)
 	go func() {
 		if err = grpcServer.Serve(lis); err != nil {
 			log.Error(err)
@@ -178,6 +178,7 @@ func (r *Router) pushResource(ctx context.Context, res resource, typeUrl string)
 }
 
 func (r *Router) handleGrpcStream(s grpcStream, typeUrl string) error {
+	log.Infof("handleGrpcStream: %v %s", s, typeUrl)
 	r.PushStreams.create(typeUrl, s)
 	defer r.PushStreams.delete(typeUrl, s)
 	return r.readRequest(s)
