@@ -58,3 +58,16 @@ func (ps *pushStreams) delete(key string, s grpcStream) error {
 	}
 	return fmt.Errorf("Cannot find push stream %v for %s", s, key)
 }
+
+func (ps *pushStreams) find(s grpcStream) *pushStream {
+	ps.RLock()
+	defer ps.Unlock()
+	for _, strms := range ps.Streams {
+		for _, strm := range strms {
+			if strm.grpcStream == s {
+				return strm
+			}
+		}
+	}
+	return nil
+}

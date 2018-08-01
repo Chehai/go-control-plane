@@ -13,7 +13,7 @@ static_resources:
     address:
       socket_address:
         address: 0.0.0.0
-        port_value: 10000
+        port_value: 9909
     filter_chains:
     - filters:
       - name: envoy.http_connection_manager
@@ -41,18 +41,13 @@ static_resources:
           api_type: GRPC
           grpc_services:
             envoy_grpc:
-              cluster_name: xds_cluster
-  - name: xds_cluster
+              cluster_name: cluster_xds
+  - name: cluster_xds
     connect_timeout: 0.25s
     type: STRICT_DNS
     lb_policy: ROUND_ROBIN
     http2_protocol_options: {}
-    load_assignment:
-      cluster_name: xds_cluster
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address:
-                address: host.docker.internal
-                port_value: 18088
+    hosts:
+    - socket_address:
+        address: host.docker.internal
+        port_value: 18088

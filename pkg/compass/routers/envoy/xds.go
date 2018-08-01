@@ -85,7 +85,7 @@ func (r *Router) startGrpcServer(ctx context.Context) error {
 	return nil
 }
 
-func makeEndpointResource(cluster *common.Cluster) (*v2.ClusterLoadAssignment, error) {
+func makeEndpointResource(cluster *common.Cluster) *v2.ClusterLoadAssignment {
 	eps := make([]endpoint.LbEndpoint, len(cluster.Endpoints))
 	for _, ep := range cluster.Endpoints {
 		eps = append(eps, endpoint.LbEndpoint{
@@ -109,7 +109,24 @@ func makeEndpointResource(cluster *common.Cluster) (*v2.ClusterLoadAssignment, e
 		Endpoints: []endpoint.LocalityLbEndpoints{{
 			LbEndpoints: eps,
 		}},
-	}, nil
+	}
+}
+
+func makeEndpointResources() []*v2.ClusterLoadAssignment {
+	// read from db
+	cluster := common.Cluster{
+		Name: "test-cluster",
+		Endpoints: []common.Endpoint{
+			common.Endpoint{
+				Host: "www.google.com",
+				Port: 80,
+			},
+		},
+	}
+
+	return []*v2.ClusterLoadAssignment{
+		makeEndpointResource(&cluster),
+	}
 }
 
 func pushResponse(stream *pushStream, resp *v2.DiscoveryResponse) {
@@ -140,6 +157,22 @@ func makeResponse(res resource, typeUrl string, versionInfo string, nonce string
 		TypeUrl:     typeUrl,
 		Nonce:       nonce,
 	}, nil
+}
+
+func (r *Router) pushResourcesToStream(s grpcStream, typeUrl string) {
+	ps := r.PushStreams.find(s)
+	if ps == nil {
+		return
+	}
+	switch typeUrl {
+	case EndpointType:
+		resources := makeEndpointResources()
+		for _, res := range resources {
+			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
+			pushResponse(ps, resp)
+		}
+	}
+
 }
 
 func (r *Router) pushResource(ctx context.Context, res resource, typeUrl string) error {
@@ -178,7 +211,6 @@ func (r *Router) pushResource(ctx context.Context, res resource, typeUrl string)
 }
 
 func (r *Router) handleGrpcStream(s grpcStream, typeUrl string) error {
-	log.Infof("handleGrpcStream: %v %s", s, typeUrl)
 	r.PushStreams.create(typeUrl, s)
 	defer r.PushStreams.delete(typeUrl, s)
 	return r.readRequest(s)
@@ -190,18 +222,18 @@ func (r *Router) readRequest(s grpcStream) error {
 		if err != nil {
 			return err
 		}
-		err = r.processRequest(req)
+		err = r.processRequest(req, s)
 		if err != nil {
 			return err
 		}
 	}
 }
 
-func (r *Router) processRequest(req *v2.DiscoveryRequest) error {
+func (r *Router) processRequest(req *v2.DiscoveryRequest, s grpcStream) error {
 	versionInfo := req.GetVersionInfo()
 	nonce := req.GetResponseNonce()
 	if versionInfo == "" && nonce == "" {
-		//r.pushResourcesToStream(stream, req.GetTypeUrl())
+		go r.pushResourcesToStream(s, req.GetTypeUrl())
 		return nil
 	}
 
@@ -233,6 +265,7 @@ func (r *Router) StreamAggregatedResources(stream discovery.AggregatedDiscoveryS
 }
 
 func (r *Router) StreamEndpoints(stream v2.EndpointDiscoveryService_StreamEndpointsServer) error {
+	log.Info("Started to stream endpoints.")
 	return r.handleGrpcStream(stream, EndpointType)
 }
 
