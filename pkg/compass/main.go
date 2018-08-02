@@ -13,6 +13,11 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/compass/routers"
 )
 
+func init() {
+	log.SetOutput(os.Stdout)
+	log.SetLevel(log.DebugLevel)
+}
+
 func main() {
 	fmt.Println("Compass started")
 	ctx, cancel := context.WithCancel(context.Background())

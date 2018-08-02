@@ -34,7 +34,7 @@ func (pc *pushCallbacks) create(key1 string, key2 string, ctx context.Context, c
 
 func (pc *pushCallbacks) get(key1 string, key2 string) *pushCallback {
 	pc.RLock()
-	defer pc.Unlock()
+	defer pc.RUnlock()
 	pcb, ok := pc.Callbacks[key1]
 	if !ok {
 		return nil

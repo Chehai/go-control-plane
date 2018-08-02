@@ -3,6 +3,8 @@ package envoy
 import (
 	"fmt"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type pushStream struct {
@@ -24,11 +26,12 @@ func (ps *pushStreams) init(keys []string) {
 
 func (ps *pushStreams) get(key string) []*pushStream {
 	ps.RLock()
-	defer ps.Unlock()
+	defer ps.RUnlock()
 	return ps.Streams[key]
 }
 
 func (ps *pushStreams) create(key string, s grpcStream) error {
+	log.Debugf("pushtreams:create %v %v\n", key, s)
 	strm := pushStream{grpcStream: s}
 	ps.Lock()
 	defer ps.Unlock()
@@ -42,6 +45,7 @@ func (ps *pushStreams) create(key string, s grpcStream) error {
 }
 
 func (ps *pushStreams) delete(key string, s grpcStream) error {
+	log.Debugf("pushtreams:delete %v %v\n", key, s)
 	ps.Lock()
 	defer ps.Unlock()
 	strms, ok := ps.Streams[key]
@@ -61,7 +65,7 @@ func (ps *pushStreams) delete(key string, s grpcStream) error {
 
 func (ps *pushStreams) find(s grpcStream) *pushStream {
 	ps.RLock()
-	defer ps.Unlock()
+	defer ps.RUnlock()
 	for _, strms := range ps.Streams {
 		for _, strm := range strms {
 			if strm.grpcStream == s {

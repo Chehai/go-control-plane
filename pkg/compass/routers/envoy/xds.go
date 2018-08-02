@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync/atomic"
+	"time"
 
 	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
@@ -86,7 +87,7 @@ func (r *Router) startGrpcServer(ctx context.Context) error {
 }
 
 func makeEndpointResource(cluster *common.Cluster) *v2.ClusterLoadAssignment {
-	eps := make([]endpoint.LbEndpoint, len(cluster.Endpoints))
+	eps := make([]endpoint.LbEndpoint, 0, len(cluster.Endpoints))
 	for _, ep := range cluster.Endpoints {
 		eps = append(eps, endpoint.LbEndpoint{
 			Endpoint: &endpoint.Endpoint{
@@ -115,10 +116,10 @@ func makeEndpointResource(cluster *common.Cluster) *v2.ClusterLoadAssignment {
 func makeEndpointResources() []*v2.ClusterLoadAssignment {
 	// read from db
 	cluster := common.Cluster{
-		Name: "test-cluster",
+		Name: "cluster_apm",
 		Endpoints: []common.Endpoint{
 			common.Endpoint{
-				Host: "www.google.com",
+				Host: "162.216.20.141",
 				Port: 80,
 			},
 		},
@@ -126,6 +127,33 @@ func makeEndpointResources() []*v2.ClusterLoadAssignment {
 
 	return []*v2.ClusterLoadAssignment{
 		makeEndpointResource(&cluster),
+	}
+}
+
+func makeClusterResource(cluster *common.Cluster) *v2.Cluster {
+	la := makeEndpointResource(cluster)
+	return &v2.Cluster{
+		Name:           cluster.Name,
+		ConnectTimeout: 5 * time.Second,
+		Type:           v2.Cluster_STRICT_DNS,
+		LoadAssignment: la,
+	}
+}
+
+func makeClusterResources() []*v2.Cluster {
+	// read from db
+	cluster := common.Cluster{
+		Name: "cluster_apm",
+		Endpoints: []common.Endpoint{
+			common.Endpoint{
+				Host: "162.216.20.141",
+				Port: 80,
+			},
+		},
+	}
+
+	return []*v2.Cluster{
+		makeClusterResource(&cluster),
 	}
 }
 
@@ -137,8 +165,8 @@ func pushResponse(stream *pushStream, resp *v2.DiscoveryResponse) {
 	}
 }
 
-func makeNonce(pushId *string, i int) string {
-	return fmt.Sprintf("%s-%d", *pushId, i)
+func makeNonce(pushID string, i int) string {
+	return fmt.Sprintf("%s-%d", pushID, i)
 }
 
 func (r *Router) makeVersionInfo() string {
@@ -171,6 +199,12 @@ func (r *Router) pushResourcesToStream(s grpcStream, typeUrl string) {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
+		// case ClusterType:
+		// 	resources := makeClusterResources()
+		// 	for _, res := range resources {
+		// 		resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
+		// 		pushResponse(ps, resp)
+		// 	}
 	}
 
 }
@@ -181,19 +215,19 @@ func (r *Router) pushResource(ctx context.Context, res resource, typeUrl string)
 		return fmt.Errorf("Cannot find streams for %s", typeUrl)
 	}
 
-	pushId := xid.New().String()
-	defer r.PushCallbacks.delete(pushId)
+	pushID := xid.New().String()
+	defer r.PushCallbacks.delete(pushID)
 
 	cbChs := make([]<-chan error, len(streams))
 	for i, s := range streams {
 		versionInfo := r.makeVersionInfo()
-		nonce := makeNonce(&pushId, i)
+		nonce := makeNonce(pushID, i)
 		resp, err := makeResponse(res, typeUrl, versionInfo, nonce)
 		if err != nil {
 			return err
 		}
 		ch := make(chan error)
-		r.PushCallbacks.create(pushId, fmt.Sprintf("%d", i), ctx, ch)
+		r.PushCallbacks.create(pushID, fmt.Sprintf("%d", i), ctx, ch)
 		cbChs = append(cbChs, ch)
 		go pushResponse(s, resp)
 	}

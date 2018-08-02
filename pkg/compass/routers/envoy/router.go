@@ -32,8 +32,12 @@ func (r *Router) Init(ctx context.Context, confFile string) error {
 }
 
 func (r *Router) UpsertCluster(ctx context.Context, cluster *common.Cluster) error {
-	endpointResource := makeEndpointResource(cluster)
-	if err := r.pushResource(ctx, endpointResource, EndpointType); err != nil {
+	// endpointResource := makeEndpointResource(cluster)
+	// if err := r.pushResource(ctx, endpointResource, EndpointType); err != nil {
+	// 	return err
+	// }
+	clusterResource := makeClusterResource(cluster)
+	if err := r.pushResource(ctx, clusterResource, ClusterType); err != nil {
 		return err
 	}
 	return nil
