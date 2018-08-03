@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"sync/atomic"
-	"time"
 
 	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
@@ -16,11 +15,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2"
-	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
-	"github.com/envoyproxy/go-control-plane/envoy/api/v2/endpoint"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v2"
-
-	"github.com/envoyproxy/go-control-plane/pkg/compass/common"
 )
 
 const (
@@ -86,77 +81,6 @@ func (r *Router) startGrpcServer(ctx context.Context) error {
 	return nil
 }
 
-func makeEndpointResource(cluster *common.Cluster) *v2.ClusterLoadAssignment {
-	eps := make([]endpoint.LbEndpoint, 0, len(cluster.Endpoints))
-	for _, ep := range cluster.Endpoints {
-		eps = append(eps, endpoint.LbEndpoint{
-			Endpoint: &endpoint.Endpoint{
-				Address: &core.Address{
-					Address: &core.Address_SocketAddress{
-						SocketAddress: &core.SocketAddress{
-							Protocol: core.TCP,
-							Address:  ep.Host,
-							PortSpecifier: &core.SocketAddress_PortValue{
-								PortValue: ep.Port,
-							},
-						},
-					},
-				},
-			},
-		})
-	}
-	return &v2.ClusterLoadAssignment{
-		ClusterName: cluster.Name,
-		Endpoints: []endpoint.LocalityLbEndpoints{{
-			LbEndpoints: eps,
-		}},
-	}
-}
-
-func makeEndpointResources() []*v2.ClusterLoadAssignment {
-	// read from db
-	cluster := common.Cluster{
-		Name: "cluster_apm",
-		Endpoints: []common.Endpoint{
-			common.Endpoint{
-				Host: "162.216.20.141",
-				Port: 80,
-			},
-		},
-	}
-
-	return []*v2.ClusterLoadAssignment{
-		makeEndpointResource(&cluster),
-	}
-}
-
-func makeClusterResource(cluster *common.Cluster) *v2.Cluster {
-	la := makeEndpointResource(cluster)
-	return &v2.Cluster{
-		Name:           cluster.Name,
-		ConnectTimeout: 5 * time.Second,
-		Type:           v2.Cluster_STRICT_DNS,
-		LoadAssignment: la,
-	}
-}
-
-func makeClusterResources() []*v2.Cluster {
-	// read from db
-	cluster := common.Cluster{
-		Name: "cluster_apm",
-		Endpoints: []common.Endpoint{
-			common.Endpoint{
-				Host: "162.216.20.141",
-				Port: 80,
-			},
-		},
-	}
-
-	return []*v2.Cluster{
-		makeClusterResource(&cluster),
-	}
-}
-
 func pushResponse(stream *pushStream, resp *v2.DiscoveryResponse) {
 	stream.Lock()
 	defer stream.Unlock()
@@ -165,8 +89,16 @@ func pushResponse(stream *pushStream, resp *v2.DiscoveryResponse) {
 	}
 }
 
+// golang's %s is greedy, so we have to put number first and then string
 func makeNonce(pushID string, i int) string {
-	return fmt.Sprintf("%s-%d", pushID, i)
+	return fmt.Sprintf("%d-%s", i, pushID)
+}
+
+func readNonce(nonce string) (string, int) {
+	var pushID string
+	var i int
+	fmt.Sscanf(nonce, "%d-%s", &i, &pushID)
+	return pushID, i
 }
 
 func (r *Router) makeVersionInfo() string {
@@ -199,26 +131,38 @@ func (r *Router) pushResourcesToStream(s grpcStream, typeUrl string) {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
-		// case ClusterType:
-		// 	resources := makeClusterResources()
-		// 	for _, res := range resources {
-		// 		resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
-		// 		pushResponse(ps, resp)
-		// 	}
+	case ClusterType:
+		resources := makeClusterResources()
+		for _, res := range resources {
+			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
+			pushResponse(ps, resp)
+		}
+	case RouteType:
+		resources := makeRouteResources()
+		for _, res := range resources {
+			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
+			pushResponse(ps, resp)
+		}
+	case ListenerType:
+		resources := makeListenerResources()
+		for _, res := range resources {
+			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
+			pushResponse(ps, resp)
+		}
 	}
-
 }
 
 func (r *Router) pushResource(ctx context.Context, res resource, typeUrl string) error {
+	log.Debug("Router.pushResource")
 	streams := r.PushStreams.get(typeUrl)
 	if streams == nil {
 		return fmt.Errorf("Cannot find streams for %s", typeUrl)
 	}
-
+	log.Debugf("streams len: %d", len(streams))
 	pushID := xid.New().String()
 	defer r.PushCallbacks.delete(pushID)
 
-	cbChs := make([]<-chan error, len(streams))
+	cbChs := make([]<-chan error, 0, len(streams))
 	for i, s := range streams {
 		versionInfo := r.makeVersionInfo()
 		nonce := makeNonce(pushID, i)
@@ -227,7 +171,7 @@ func (r *Router) pushResource(ctx context.Context, res resource, typeUrl string)
 			return err
 		}
 		ch := make(chan error)
-		r.PushCallbacks.create(pushID, fmt.Sprintf("%d", i), ctx, ch)
+		r.PushCallbacks.create(pushID, i, ctx, ch)
 		cbChs = append(cbChs, ch)
 		go pushResponse(s, resp)
 	}
@@ -271,9 +215,9 @@ func (r *Router) processRequest(req *v2.DiscoveryRequest, s grpcStream) error {
 		return nil
 	}
 
-	var pushId, i string
-	fmt.Sscan(nonce, "%s-%s", &pushId, &i)
-	cb := r.PushCallbacks.get(pushId, i)
+	pushID, i := readNonce(nonce)
+	cb := r.PushCallbacks.get(pushID, i)
+	log.Debugf("Router.processRequest: PushCallbacks get %s %s: %v", pushID, i, cb)
 	if cb == nil {
 		return nil
 	}
@@ -281,8 +225,8 @@ func (r *Router) processRequest(req *v2.DiscoveryRequest, s grpcStream) error {
 	ch := cb.Channel
 	defer close(ch)
 	err := req.GetErrorDetail()
+	log.Debugf("Router.processRequest: req error: %v", err)
 	if err == nil {
-		close(ch)
 		return nil
 	}
 
@@ -299,7 +243,7 @@ func (r *Router) StreamAggregatedResources(stream discovery.AggregatedDiscoveryS
 }
 
 func (r *Router) StreamEndpoints(stream v2.EndpointDiscoveryService_StreamEndpointsServer) error {
-	log.Info("Started to stream endpoints.")
+	log.Debug("Started to stream endpoints.")
 	return r.handleGrpcStream(stream, EndpointType)
 }
 

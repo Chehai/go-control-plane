@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 
 	"github.com/envoyproxy/go-control-plane/pkg/compass/common"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/ghodss/yaml"
 )
@@ -32,12 +33,23 @@ func (r *Router) Init(ctx context.Context, confFile string) error {
 }
 
 func (r *Router) UpsertCluster(ctx context.Context, cluster *common.Cluster) error {
-	// endpointResource := makeEndpointResource(cluster)
-	// if err := r.pushResource(ctx, endpointResource, EndpointType); err != nil {
-	// 	return err
-	// }
+	log.Debug("Router.UpsertCluster: before makeClusterResource")
 	clusterResource := makeClusterResource(cluster)
 	if err := r.pushResource(ctx, clusterResource, ClusterType); err != nil {
+		return err
+	}
+	endpointResource := makeEndpointResource(cluster)
+	log.Debug("Router.upsertCluster: before push Enpdoint resources")
+	if err := r.pushResource(ctx, endpointResource, EndpointType); err != nil {
+		log.Debugf("Router.UpsertCluster: pushResource Endpoint err %v", err)
+		return err
+	}
+	return nil
+}
+
+func (r *Router) UpsertRoute(ctx context.Context) error {
+	routeResource := makeRouteResource()
+	if err := r.pushResource(ctx, routeResource, RouteType); err != nil {
 		return err
 	}
 	return nil

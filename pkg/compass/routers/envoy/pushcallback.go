@@ -3,6 +3,8 @@ package envoy
 import (
 	"context"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type pushCallback struct {
@@ -11,30 +13,32 @@ type pushCallback struct {
 }
 
 type pushCallbacks struct {
-	Callbacks map[string]map[string]*pushCallback
+	Callbacks map[string]map[int]*pushCallback
 	sync.RWMutex
 }
 
 func (pc *pushCallbacks) init() {
-	pc.Callbacks = make(map[string]map[string]*pushCallback)
+	pc.Callbacks = make(map[string]map[int]*pushCallback)
 }
 
-func (pc *pushCallbacks) create(key1 string, key2 string, ctx context.Context, ch chan error) error {
+func (pc *pushCallbacks) create(key1 string, key2 int, ctx context.Context, ch chan error) error {
 	cb := pushCallback{Context: ctx, Channel: ch}
 	pc.Lock()
 	defer pc.Unlock()
 	pcb, ok := pc.Callbacks[key1]
 	if !ok {
-		pcb = make(map[string]*pushCallback)
+		pcb = make(map[int]*pushCallback)
 	}
 	pcb[key2] = &cb
 	pc.Callbacks[key1] = pcb
+	log.Debugf("pushCallbacks.create %s %d", key1, key2)
 	return nil
 }
 
-func (pc *pushCallbacks) get(key1 string, key2 string) *pushCallback {
+func (pc *pushCallbacks) get(key1 string, key2 int) *pushCallback {
 	pc.RLock()
 	defer pc.RUnlock()
+	log.Debugf("pushCallbacks.get %s %s", key1, key2)
 	pcb, ok := pc.Callbacks[key1]
 	if !ok {
 		return nil

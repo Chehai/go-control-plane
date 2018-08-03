@@ -31,7 +31,8 @@ func readConfFile(confFile string) error {
 }
 
 func startServer(ctx context.Context, port uint, rt routers.Router) error {
-	http.HandleFunc("/upsert_vhost/", httpHandleFunc(ctx, rt, upsertCluster))
+	http.HandleFunc("/upsert_cluster", httpHandleFunc(ctx, rt, upsertCluster))
+	http.HandleFunc("/upsert_route", httpHandleFunc(ctx, rt, upsertRoute))
 	go func() {
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 	}()
@@ -54,16 +55,24 @@ func upsertCluster(ctx context.Context, rt routers.Router, w http.ResponseWriter
 	// save cluster to db
 
 	cluster := common.Cluster{
-		Name: "test-cluster",
+		Name: "cluster-apm",
 		Endpoints: []common.Endpoint{
 			common.Endpoint{
-				Host: "www.google.com",
+				Host: "162.216.20.141",
 				Port: 80,
 			},
 		},
 	}
 
 	if err := rt.UpsertCluster(ctx, &cluster); err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+	fmt.Fprintf(w, "success")
+}
+
+func upsertRoute(ctx context.Context, rt routers.Router, w http.ResponseWriter, r *http.Request) {
+	if err := rt.UpsertRoute(ctx); err != nil {
 		fmt.Fprintf(w, "error")
 		return
 	}

@@ -10,6 +10,7 @@ import (
 type Router interface {
 	Init(ctx context.Context, confFile string) error
 	UpsertCluster(ctx context.Context, cluster *common.Cluster) error
+	UpsertRoute(ctx context.Context) error
 }
 
 func NewEnvoyRouter() Router {
