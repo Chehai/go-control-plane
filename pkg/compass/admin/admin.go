@@ -10,15 +10,22 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/pkg/compass/common"
 	"github.com/envoyproxy/go-control-plane/pkg/compass/routers"
+	"github.com/envoyproxy/go-control-plane/pkg/compass/stores"
+
 )
 
-func Init(ctx context.Context, confFile string, r routers.Router) error {
+type admin struct {
+	router routers.Router
+	store stores.Store
+}
+
+func Init(ctx context.Context, confFile string, r routers.Router, s stores.Store) error {
 	err := readConfFile(confFile)
 	if err != nil {
 		return err
 	}
 
-	err = startServer(ctx, 18080, r)
+	err = startServer(ctx, 18080, admin{router: r, store: s})
 	if err != nil {
 		return err
 	}
@@ -30,29 +37,30 @@ func readConfFile(confFile string) error {
 	return nil
 }
 
-func startServer(ctx context.Context, port uint, rt routers.Router) error {
-	http.HandleFunc("/upsert_cluster", httpHandleFunc(ctx, rt, upsertCluster))
-	http.HandleFunc("/upsert_route", httpHandleFunc(ctx, rt, upsertRoute))
+func startServer(ctx context.Context, port uint, a admin) error {
+	http.HandleFunc("/upsert_cluster", httpHandleFunc(ctx, a, upsertCluster))
+	http.HandleFunc("/upsert_route", httpHandleFunc(ctx, a, upsertRoute))
 	go func() {
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 	}()
 	return nil
 }
 
-type handleFuncType func(context.Context, routers.Router, http.ResponseWriter, *http.Request)
+type handleFuncType func(context.Context, admin, http.ResponseWriter, *http.Request)
 type httpHandleFuncType func(http.ResponseWriter, *http.Request)
 
-func httpHandleFunc(ctx context.Context, rt routers.Router, f handleFuncType) httpHandleFuncType {
+func httpHandleFunc(ctx context.Context, a admin, f handleFuncType) httpHandleFuncType {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 		defer cancel()
-		f(ctx, rt, w, r)
+		f(ctx, a, w, r)
 	}
 }
 
-func upsertCluster(ctx context.Context, rt routers.Router, w http.ResponseWriter, r *http.Request) {
+func upsertCluster(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
 	// validate cluster
 	// save cluster to db
+	// db.parse
 
 	cluster := common.Cluster{
 		Name: "cluster-apm",
@@ -64,17 +72,38 @@ func upsertCluster(ctx context.Context, rt routers.Router, w http.ResponseWriter
 		},
 	}
 
-	if err := rt.UpsertCluster(ctx, &cluster); err != nil {
+	err := a.store.UpsertCluster(ctx, &cluster)
+	if err != nil {
 		fmt.Fprintf(w, "error")
 		return
 	}
+
+	err = a.router.UpsertCluster(ctx, &cluster)
+	if err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+
 	fmt.Fprintf(w, "success")
 }
 
-func upsertRoute(ctx context.Context, rt routers.Router, w http.ResponseWriter, r *http.Request) {
-	if err := rt.UpsertRoute(ctx); err != nil {
+func upsertRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
+	route := common.Route{
+		Vhost: "*"
+		Cluster: "cluster-apm"
+	}
+
+	err := a.store.UpsertRoute(ctx, &route)
+	if err != nil {
 		fmt.Fprintf(w, "error")
 		return
 	}
+
+	err = a.router.UpsertRoute(ctx, &route)
+	if err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+
 	fmt.Fprintf(w, "success")
 }

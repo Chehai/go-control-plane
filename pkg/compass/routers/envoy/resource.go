@@ -23,7 +23,6 @@ const (
 )
 
 func makeListenerResource() *v2.Listener {
-	// data source configuration
 	rdsSource := core.ConfigSource{}
 	rdsSource.ConfigSourceSpecifier = &core.ConfigSource_ApiConfigSource{
 		ApiConfigSource: &core.ApiConfigSource{
@@ -77,39 +76,36 @@ func makeListenerResource() *v2.Listener {
 	}
 }
 
-func makeListenerResources() []*v2.Listener {
-	return []*v2.Listener{
-		makeListenerResource(),
-	}
-}
-
-func makeRouteResource() *v2.RouteConfiguration {
-	return &v2.RouteConfiguration{
-		Name: routeConfigName,
-		VirtualHosts: []route.VirtualHost{{
-			Name:    "slice1",
-			Domains: []string{"*"},
-			Routes: []route.Route{{
-				Match: route.RouteMatch{
-					PathSpecifier: &route.RouteMatch_Prefix{
-						Prefix: "/",
-					},
-				},
-				Action: &route.Route_Route{
-					Route: &route.RouteAction{
-						ClusterSpecifier: &route.RouteAction_Cluster{
-							Cluster: "cluster-apm",
+func makeRouteResource(routes []*common.Route) *v2.RouteConfiguration {
+	vhm := make(map[string]route.VirtualHost)
+	for _, r := range routes {
+		if c, ok := vhm[r.Cluster]; !ok {
+			vhm[r.Cluster] = route.VirtualHost{
+				Name: r.Cluster,
+				Domains: []string{r.Vhost},
+				Routes: []route.Route{{
+					Action: &route.Route_Route{
+						Route: &route.RouteAction{
+							ClusterSpecifier: &route.RouteAction_Cluster{
+								Cluster: r.Cluster,
+							},
 						},
 					},
-				},
-			}},
-		}},
+				}},
+			}
+		} else {
+			c.Domains = append(c.Domains, r.Vhost)
+		}
 	}
-}
 
-func makeRouteResources() []*v2.RouteConfiguration {
-	return []*v2.RouteConfiguration{
-		//makeRouteResource(),
+	vhs := make([]route.VirtualHost, 0, len(vhm))
+	for _, v := vhm {
+		vhs = append(vhs, v)
+	}
+
+	return &v2.RouteConfiguration{
+		Name: routeConfigName,
+		VirtualHosts: vhs,
 	}
 }
 
@@ -140,23 +136,6 @@ func makeEndpointResource(cluster *common.Cluster) *v2.ClusterLoadAssignment {
 	}
 }
 
-func makeEndpointResources() []*v2.ClusterLoadAssignment {
-	// read from db
-	// cluster := common.Cluster{
-	// 	Name: "cluster-apm",
-	// 	Endpoints: []common.Endpoint{
-	// 		common.Endpoint{
-	// 			Host: "162.216.20.141",
-	// 			Port: 80,
-	// 		},
-	// 	},
-	// }
-
-	return []*v2.ClusterLoadAssignment{
-		//makeEndpointResource(&cluster),
-	}
-}
-
 func makeClusterResource(cluster *common.Cluster) *v2.Cluster {
 	return &v2.Cluster{
 		Name:           cluster.Name,
@@ -179,19 +158,38 @@ func makeClusterResource(cluster *common.Cluster) *v2.Cluster {
 	}
 }
 
-func makeClusterResources() []*v2.Cluster {
-	// read from db
-	// cluster := common.Cluster{
-	// 	Name: "cluster-apm",
-	// 	Endpoints: []common.Endpoint{
-	// 		common.Endpoint{
-	// 			Host: "162.216.20.141",
-	// 			Port: 80,
-	// 		},
-	// 	},
-	// }
-
-	return []*v2.Cluster{
-		// makeClusterResource(&cluster),
+func (r *Router) makeEndpointBootstrapResources() []*v2.ClusterLoadAssignment {
+	clusters := r.store.GetClusters()
+	ret := make([]*v2.ClusterLoadAssignment, 0, len(clusters))
+	for _, c := clusters range {
+		ret = append(ret, makeEndpointResource(c))
 	}
+	return ret
+}
+
+func (r *Router) makeRouteBootstrapResources() []*v2.Cluster {
+	clusters := r.store.GetClusters()
+	ret := make([]*v2.Cluster, 0, len(clusters))
+	for _, c := clusters range {
+		ret = append(ret, makeClusterResource(c))
+	}
+	return ret
+}
+
+func (r *Router) makeClusterBootstrapResources() []*v2.Cluster {
+	clusters := r.store.GetClusters()
+	ret := make([]*v2.Cluster, 0, len(clusters))
+	for _, c := clusters range {
+		ret = append(ret, makeClusterResource(c))
+	}
+	return ret
+}
+
+func (r *Router) makeClusterBootstrapResources() []*v2.Cluster {
+	clusters := r.store.GetClusters()
+	ret := make([]*v2.Cluster, 0, len(clusters))
+	for _, c := clusters range {
+		ret = append(ret, makeClusterResource(c))
+	}
+	return ret
 }

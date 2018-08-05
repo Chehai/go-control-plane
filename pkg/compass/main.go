@@ -11,6 +11,7 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/pkg/compass/admin"
 	"github.com/envoyproxy/go-control-plane/pkg/compass/routers"
+	"github.com/envoyproxy/go-control-plane/pkg/compass/stores"
 )
 
 func init() {
@@ -19,7 +20,7 @@ func init() {
 }
 
 func main() {
-	fmt.Println("Compass started")
+	log.Info("Compass started")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c := make(chan os.Signal)
@@ -34,13 +35,28 @@ func main() {
 		cancel()
 	}()
 
-	r := routers.NewEnvoyRouter()
 	log.Info("Init router")
-	r.Init(ctx, "todo")
+	r := routers.NewEnvoyRouter()
+	err := r.Init(ctx, "todo")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Info("Init store")
+	s := stores.NewMysqlStore()
+	err = s.Init(ctx, "todo")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Info("Init admin")
-	admin.Init(ctx, "todo", r)
+	err = admin.Init(ctx, "todo", r, s)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	log.Info("Compass init done")
+
 	<-ctx.Done()
-	fmt.Println("Compass stopped")
+	log.Info("Compass stopped")
 }

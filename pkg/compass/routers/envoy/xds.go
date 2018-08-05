@@ -119,32 +119,32 @@ func makeResponse(res resource, typeUrl string, versionInfo string, nonce string
 	}, nil
 }
 
-func (r *Router) pushResourcesToStream(s grpcStream, typeUrl string) {
+func (r *Router) bootstrapResources(s grpcStream, typeUrl string) {
 	ps := r.PushStreams.find(s)
 	if ps == nil {
 		return
 	}
 	switch typeUrl {
 	case EndpointType:
-		resources := makeEndpointResources()
+		resources := makeEndpointBootstrapResources()
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
 	case ClusterType:
-		resources := makeClusterResources()
+		resources := makeClusterBootstrapResources()
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
 	case RouteType:
-		resources := makeRouteResources()
+		resources := makeRouteBootstrapResources()
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
 	case ListenerType:
-		resources := makeListenerResources()
+		resources := makeListenerBootstrapResources()
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
@@ -211,7 +211,7 @@ func (r *Router) processRequest(req *v2.DiscoveryRequest, s grpcStream) error {
 	versionInfo := req.GetVersionInfo()
 	nonce := req.GetResponseNonce()
 	if versionInfo == "" && nonce == "" {
-		go r.pushResourcesToStream(s, req.GetTypeUrl())
+		go r.bootstrapResources(s, req.GetTypeUrl())
 		return nil
 	}
 
