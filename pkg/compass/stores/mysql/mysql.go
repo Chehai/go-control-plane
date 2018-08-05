@@ -39,11 +39,20 @@ const (
 	upsertClusterSql = "REPLACE INTO " + \
 										 clustersTable + \
 										 "(name, conf) VALUES (?, ?)"
-	upsertRouteSql = "REPLACE INTO " + \
+	deleteClusterSql = "DELETE FROM " + \
+										 clustersTable + \
+										 " WHERE name = ?"
+	getClustersSql = "SELECT conf FROM " + clustersTable
+  upsertRouteSql = "REPLACE INTO " + \
 									 routesTable + \
 									 "(vhost, cluster) VALUES (?, ?)"
-	getRoutesSql = "SELECT vhost, cluster FROM " + routesTable
-	getClustersSql = "SELECT conf FROM " + clustersTable
+	deleteRouteSql = "DELETE FROM " + \
+									 routesTable + \
+									 " WHERE vhost = ?"
+	getRouteSql = "SELECT vhost, cluster FROM " + \
+								routesTable + \
+								" WHERE vhost = ? LIMIT 1"
+  getRoutesSql = "SELECT vhost, cluster FROM " + routesTable
 )
 
 type Store struct {
@@ -79,6 +88,15 @@ func (s *Store) UpsertCluster(ctx context.Context, cluster *common.Cluster) erro
 	return nil
 }
 
+func (s *Store) DeleteCluster(ctx context.Context, clusterName string) error {
+	_, err := s.db.ExecContext(ctx, deleteClusterSql, clusterName)
+	if err != nil {
+		log.Error("Deleting cluster %s failed: %v", clusterName, err)
+		return err
+	}
+	return nil
+}
+
 func (s *Store) UpsertRoute(ctx context.Context, route *common.Route) error {
 	_, err := s.db.ExecContext(ctx, upsertRouteSql, route.Vhost, route.Cluster)
 	if err != nil {
@@ -86,6 +104,38 @@ func (s *Store) UpsertRoute(ctx context.Context, route *common.Route) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Store) DeleteRoute(ctx context.Context, vhost string) error {
+	_, err := s.db.ExecContext(ctx, deleteRouteSql, vhost)
+	if err != nil {
+		log.Errorf("Deleting route %s failed: %v", vhost, err)
+		return err
+	}
+	return nil
+}
+
+func (s *Store) GetRoute(ctx context.Context, vhost string) (*common.Route, error) {
+	ret := []*common.Route{}
+	rows, err := s.db.QueryContext(ctx, getRouteSql, vhost)
+	if err != nil {
+		log.Errorf("Getting route %s failed: %v", vhost, err)
+		return nil, err
+	}
+	defer rows.close()
+	for rows.Next() {
+		var route common.Route
+		if err := rows.Scan(&route.Vhost, &route.Cluster); err != nil {
+			log.Errorf("Getting route %s failed: %v", vhost, err)
+			return nil, err
+		}
+		ret = append(ret, &route)
+	}
+	if err = rows.Err(); err != nil {
+		log.Errorf("Getting route %s failed: %v", vhost, err)
+		return nil, err
+	}
+	return ret[0], nil
 }
 
 func (s *Store) GetRoutes(ctx context.Context) ([]*common.Route, error) {

@@ -22,7 +22,52 @@ const (
 	listenerPort    = 9909
 )
 
-func makeListenerResource() *v2.Listener {
+func (r *Router) makeListenerResources(_ context.Context) ([]resource, error) {
+	listener, err := makeListenerResource()
+	if err != nil {
+		return nil, err
+	}
+	return []resource{
+		resource(listener),
+	}, nil
+}
+
+func (r *Router) makeClusterResources(ctx context.Context) ([]resource, error) {
+	clusters, err := r.store.GetClusters(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]resource, 0, len(clusters))
+	for _, c := clusters range {
+		ret = append(ret, resource(makeClusterResource(c)))
+	}
+	return ret, nil
+}
+
+func (r *Router) makeEndpointResources(ctx context.Context) ([]resource, error) {
+	clusters, err := r.store.GetClusters(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]resource, 0, len(clusters))
+	for _, c := clusters range {
+		ret = append(ret, resource(makeEndpointResource(c)))
+	}
+	return ret, nil
+}
+
+func (r *Router) makeRouteResources(ctx context.Context) ([]*resource, error) {
+	routes, err := r.store.GetRoutes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	routeResource := makeRouteResource(routes)
+	return []resource{
+		resource(routeResource),
+	}, nil
+}
+
+func makeListenerResource() (*v2.Listener, error) {
 	rdsSource := core.ConfigSource{}
 	rdsSource.ConfigSourceSpecifier = &core.ConfigSource_ApiConfigSource{
 		ApiConfigSource: &core.ApiConfigSource{
@@ -51,7 +96,7 @@ func makeListenerResource() *v2.Listener {
 	}
 	pbst, err := util.MessageToStruct(manager)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	return &v2.Listener{
@@ -73,10 +118,10 @@ func makeListenerResource() *v2.Listener {
 				Config: pbst,
 			}},
 		}},
-	}
+	}, nil
 }
 
-func makeRouteResource(routes []*common.Route) *v2.RouteConfiguration {
+func makeRouteResource(routes []*common.Route) (*v2.RouteConfiguration, error) {
 	vhm := make(map[string]route.VirtualHost)
 	for _, r := range routes {
 		if c, ok := vhm[r.Cluster]; !ok {
@@ -106,10 +151,10 @@ func makeRouteResource(routes []*common.Route) *v2.RouteConfiguration {
 	return &v2.RouteConfiguration{
 		Name: routeConfigName,
 		VirtualHosts: vhs,
-	}
+	}, nil
 }
 
-func makeEndpointResource(cluster *common.Cluster) *v2.ClusterLoadAssignment {
+func makeEndpointResource(cluster *common.Cluster) (*v2.ClusterLoadAssignment, error) {
 	eps := make([]endpoint.LbEndpoint, 0, len(cluster.Endpoints))
 	for _, ep := range cluster.Endpoints {
 		eps = append(eps, endpoint.LbEndpoint{
@@ -133,10 +178,10 @@ func makeEndpointResource(cluster *common.Cluster) *v2.ClusterLoadAssignment {
 		Endpoints: []endpoint.LocalityLbEndpoints{{
 			LbEndpoints: eps,
 		}},
-	}
+	}, nil
 }
 
-func makeClusterResource(cluster *common.Cluster) *v2.Cluster {
+func makeClusterResource(cluster *common.Cluster) (*v2.Cluster, error) {
 	return &v2.Cluster{
 		Name:           cluster.Name,
 		ConnectTimeout: 30 * time.Second,
@@ -155,46 +200,5 @@ func makeClusterResource(cluster *common.Cluster) *v2.Cluster {
 				},
 			},
 		},
-	}
-}
-
-func (r *Router) makeEndpointBootstrapResources(ctx context.Context) []*v2.ClusterLoadAssignment {
-	clusters, err := r.store.GetClusters(ctx)
-	if err != nil {
-		return nil
-	}
-	ret := make([]*v2.ClusterLoadAssignment, 0, len(clusters))
-	for _, c := clusters range {
-		ret = append(ret, makeEndpointResource(c))
-	}
-	return ret
-}
-
-func (r *Router) makeRouteBootstrapResources(ctx context.Context) []*v2.RouteConfiguration {
-	routes, err := r.store.GetRoutes(ctx)
-	if err != nil {
-		return nil
-	}
-	routeResource := makeRouteResource(routes)
-	return []*v2.RouteConfiguration{
-		routeResource,
-	}
-}
-
-func (r *Router) makeClusterBootstrapResources(ctx context.Context) []*v2.Cluster {
-	clusters, err := r.store.GetClusters(ctx)
-	if err != nil {
-		return nil
-	}
-	ret := make([]*v2.Cluster, 0, len(clusters))
-	for _, c := clusters range {
-		ret = append(ret, makeClusterResource(c))
-	}
-	return ret
-}
-
-func (r *Router) makeListenerBootstrapResources(_ context.Context) []*v2.Listener {
-	return []*v2.Listener{
-		makeListenerResource(),
-	}
+	}, nil
 }

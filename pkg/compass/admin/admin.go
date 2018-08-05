@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/envoyproxy/go-control-plane/pkg/compass/common"
@@ -38,10 +39,14 @@ func readConfFile(confFile string) error {
 }
 
 func startServer(ctx context.Context, port uint, a admin) error {
-	http.HandleFunc("/upsert_cluster", httpHandleFunc(ctx, a, upsertCluster))
-	http.HandleFunc("/upsert_route", httpHandleFunc(ctx, a, upsertRoute))
+	r := mux.NewRouter()
+	r.HandleFunc("/upsert_cluster", httpHandleFunc(ctx, a, upsertCluster))
+	r.HandleFunc("/upsert_route", httpHandleFunc(ctx, a, upsertRoute))
+	r.HandleFunc("/delete_cluster", httpHandleFunc(ctx, a, deleteCluster))
+	r.HandleFunc("/delete_route", httpHandleFunc(ctx, a, deleteRoute))
+	r.HandleFunc("/get_route", httpHandleFunc(ctx, a, getRoute))
 	go func() {
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), r))
 	}()
 	return nil
 }
@@ -106,4 +111,52 @@ func upsertRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Re
 	}
 
 	fmt.Fprintf(w, "success")
+}
+
+func deleteRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
+	vhost := "test"
+
+	err := a.store.DeleteRoute(ctx, vhost)
+	if err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+
+	err = a.router.DeleteRoute(ctx, vhost)
+	if err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+
+	fmt.Fprintf(w, "success")
+}
+
+func deleteCluster(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
+	clusterName := "test"
+
+	err := a.store.DeleteCluster(ctx, clusterName)
+	if err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+
+	err = a.router.DeleteCluster(ctx, clusterName)
+	if err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+
+	fmt.Fprintf(w, "success")
+}
+
+func getRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
+	vhost := "test"
+
+	route, err := a.store.GetRoute(ctx, vhost)
+	if err != nil {
+		fmt.Fprintf(w, "error")
+		return
+	}
+
+	fmt.Fprintf(w, "success: %s", route.Cluster)
 }

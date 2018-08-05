@@ -35,30 +35,45 @@ func (r *Router) Init(ctx context.Context, store stores.Store, confFile string) 
 	return r.startGrpcServer(ctx)
 }
 
-func (r *Router) UpsertCluster(ctx context.Context, cluster *common.Cluster) error {
-	clusterResource := makeClusterResource(cluster)
-	if err := r.pushResource(ctx, clusterResource, ClusterType); err != nil {
-		log.Errorf("Upserting cluster failed: %v", err)
-		return err
-	}
-	endpointResource := makeEndpointResource(cluster)
-	if err := r.pushResource(ctx, endpointResource, EndpointType); err != nil {
-		log.Errorf("Upserting cluster failed: %v", err)
+func (r *Router) UpsertCluster(ctx context.Context, _ *common.Cluster) error {
+	// Push all clusters from store to envoys, because the cluster is already upserted in store.
+	return pushClusters(ctx)
+}
+
+func (r *Router) DeleteCluster(ctx context.Context, clusterName string) error {
+	// Push all clusters from store to envoys, because the cluster is already deleted in store.
+	return pushClusters(ctx)
+}
+
+func (r *Router) UpsertRoute(ctx context.Context, _ *common.Route) error {
+	// Push all routes from store to envoy, because the route is already upserted in store.
+	return pushRoutes(ctx)
+}
+
+func (r *Router) DeleteRoute(ctx context.Context, _ string) error {
+	// Push all routes from store to envoy, because the route is already deleted in store.
+	return pushRoutes(ctx)
+}
+
+func (r *Router) pushRoutes(ctx context.Context) error {
+	routeResources, err := makeRouteResources(ctx)
+	err = r.pushResources(ctx, routeResources, RouteType)
+	if err != nil {
+		log.Errorf("Pushing routes failed: %v", err)
 		return err
 	}
 	return nil
 }
 
-func (r *Router) UpsertRoute(ctx context.Context, _ *common.Route) error {
-	routes, err := r.store.GetRoutes(ctx)
-	if err != nil {
-		log.Errorf("Upserting route failed: %v", err)
+func (r *Router) pushClusters(ctx context.Context) error {
+	clusterResources, err := r.makeClusterResources(ctx)
+	if err := r.pushResources(ctx, clusterResources, ClusterType); err != nil {
+		log.Errorf("Pushing clusters failed: %v", err)
 		return err
 	}
-	routeResource := makeRouteResource(routes)
-	err = r.pushResource(ctx, routeResource, RouteType)
-	if err != nil {
-		log.Errorf("Upserting route failed: %v", err)
+	endpointResources, err := r.makeEndpointResources(ctx)
+	if err := r.pushResources(ctx, endpointResources, EndpointType); err != nil {
+		log.Errorf("Pushing endpoints failed: %v", err)
 		return err
 	}
 	return nil

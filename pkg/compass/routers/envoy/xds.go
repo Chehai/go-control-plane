@@ -81,12 +81,14 @@ func (r *Router) startGrpcServer(ctx context.Context) error {
 	return nil
 }
 
-func pushResponse(stream *pushStream, resp *v2.DiscoveryResponse) {
+func pushResponse(stream *pushStream, resp *v2.DiscoveryResponse) error {
 	stream.Lock()
 	defer stream.Unlock()
 	if err := stream.Send(resp); err != nil {
 		log.Error(err)
+		return err
 	}
+	return nil
 }
 
 // golang's %s is greedy, so we have to put number first and then string
@@ -106,76 +108,84 @@ func (r *Router) makeVersionInfo() string {
 	return fmt.Sprintf("%d", v)
 }
 
-func makeResponse(res resource, typeUrl string, versionInfo string, nonce string) (*v2.DiscoveryResponse, error) {
-	data, err := proto.Marshal(res)
-	if err != nil {
-		return nil, err
+func makeResponse(res []resource, typeUrl string, versionInfo string, nonce string) (*v2.DiscoveryResponse, error) {
+	resources := make([]types.Any, 0, len(res))
+	for _, r := range res {
+		data, err := proto.Marshal(r)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, types.Any{TypeUrl: typeUrl, Value: data})
 	}
 	return &v2.DiscoveryResponse{
 		VersionInfo: versionInfo,
-		Resources:   []types.Any{types.Any{TypeUrl: typeUrl, Value: data}},
+		Resources:   resources,
 		TypeUrl:     typeUrl,
 		Nonce:       nonce,
 	}, nil
 }
 
-func (r *Router) bootstrapResources(s grpcStream, typeUrl string) {
-	ps := r.PushStreams.find(s)
-	if ps == nil {
-		return
+func pushResourcesToStream(s *pushStream, resources []resource, typeUrl string, versionInfo string, nonce string) error {
+	resp, err := makeResponse(resources, typeUrl, versionInfo, nonce)
+	if err != nil {
+		log.Errorf("Pushing resources %s %s %s failed: %v", typeUrl, versionInfo, nonce, err)
+		return err
 	}
-	switch typeUrl {
-	case EndpointType:
-		resources := makeEndpointBootstrapResources(context.TODO())
-		for _, res := range resources {
-			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
-			pushResponse(ps, resp)
-		}
-	case ClusterType:
-		resources := makeClusterBootstrapResources(context.TODO())
-		for _, res := range resources {
-			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
-			pushResponse(ps, resp)
-		}
-	case RouteType:
-		resources := makeRouteBootstrapResources(context.TODO())
-		for _, res := range resources {
-			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
-			pushResponse(ps, resp)
-		}
-	case ListenerType:
-		resources := makeListenerBootstrapResources(context.TODO())
-		for _, res := range resources {
-			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
-			pushResponse(ps, resp)
-		}
-	}
+	go pushResponse(ps, resp)
+	return nil
 }
 
-func (r *Router) pushResource(ctx context.Context, res resource, typeUrl string) error {
-	log.Debug("Router.pushResource")
+func (r *Router) bootstrapResources(s grpcStream, typeUrl string) error {
+	ps := r.PushStreams.find(s)
+	if ps == nil {
+		return fmt.Errorf("Pushing bootstrap resources failed: cannot find push stream for %v", s)
+	}
+	ctx := context.TODO()
+	var resources []resources
+	var err error
+	switch typeUrl {
+	case EndpointType:
+		resources, err = r.makeEndpointResources(ctx)
+	case ClusterType:
+		resources, err = r.makeClusterResources(ctx)
+	case RouteType:
+		resources, err = r.makeRouteResources(ctx)
+	case ListenerType:
+		resources, err = r.makeListenerResources(ctx)
+	}
+	if err != nil {
+		log.Errorf("Bootstrapping resources %s failed: %v", typeUrl, err)
+		return err
+	}
+	err = pushResourcesToStream(ps, resources, typeUrl, r.makeVersionInfo(), "0-0")
+	if err != nil {
+		log.Errorf("Bootstrapping resources %s failed: %v", typeUrl, err)
+		return err
+	}
+	return nil
+}
+
+func (r *Router) pushResources(ctx context.Context, res []resource, typeUrl string) error {
 	streams := r.PushStreams.get(typeUrl)
 	if streams == nil {
 		return fmt.Errorf("Cannot find streams for %s", typeUrl)
 	}
-	log.Debugf("streams len: %d", len(streams))
 	pushID := xid.New().String()
 	defer r.PushCallbacks.delete(pushID)
 
-	cbChs := make([]<-chan error, 0, len(streams))
+	cbChs := make([]<-chan error, len(streams))
 	for i, s := range streams {
-		versionInfo := r.makeVersionInfo()
-		nonce := makeNonce(pushID, i)
-		resp, err := makeResponse(res, typeUrl, versionInfo, nonce)
-		if err != nil {
-			return err
-		}
 		ch := make(chan error)
 		r.PushCallbacks.create(pushID, i, ctx, ch)
-		cbChs = append(cbChs, ch)
-		go pushResponse(s, resp)
+		cbChs[i] = ch
+		versionInfo := r.makeVersionInfo()
+		nonce := makeNonce(pushID, i)
+		err = pushResourcesToStream(s, resources, typeUrl, versionInfo, nonce)
+		if err != nil {
+			log.Errorf("Pushing resources %s failed: %v", typeUrl, err)
+			return err
+		}
 	}
-
 	cbCh := mergeChannels(cbChs...)
 	select {
 	case err := <-cbCh:
