@@ -50,7 +50,7 @@ func (r *Router) UpsertCluster(ctx context.Context, cluster *common.Cluster) err
 }
 
 func (r *Router) UpsertRoute(ctx context.Context, _ *common.Route) error {
-	routes, err := r.store.GetRoutes()
+	routes, err := r.store.GetRoutes(ctx)
 	if err != nil {
 		log.Errorf("Upserting route failed: %v", err)
 		return err

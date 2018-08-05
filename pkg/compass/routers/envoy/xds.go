@@ -126,25 +126,25 @@ func (r *Router) bootstrapResources(s grpcStream, typeUrl string) {
 	}
 	switch typeUrl {
 	case EndpointType:
-		resources := makeEndpointBootstrapResources()
+		resources := makeEndpointBootstrapResources(context.TODO())
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
 	case ClusterType:
-		resources := makeClusterBootstrapResources()
+		resources := makeClusterBootstrapResources(context.TODO())
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
 	case RouteType:
-		resources := makeRouteBootstrapResources()
+		resources := makeRouteBootstrapResources(context.TODO())
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)
 		}
 	case ListenerType:
-		resources := makeListenerBootstrapResources()
+		resources := makeListenerBootstrapResources(context.TODO())
 		for _, res := range resources {
 			resp, _ := makeResponse(res, typeUrl, r.makeVersionInfo(), "0-0")
 			pushResponse(ps, resp)

@@ -2,7 +2,7 @@ package envoy
 
 import (
 	"time"
-
+	"context"
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/endpoint"
@@ -158,8 +158,11 @@ func makeClusterResource(cluster *common.Cluster) *v2.Cluster {
 	}
 }
 
-func (r *Router) makeEndpointBootstrapResources() []*v2.ClusterLoadAssignment {
-	clusters := r.store.GetClusters()
+func (r *Router) makeEndpointBootstrapResources(ctx context.Context) []*v2.ClusterLoadAssignment {
+	clusters, err := r.store.GetClusters(ctx)
+	if err != nil {
+		return nil
+	}
 	ret := make([]*v2.ClusterLoadAssignment, 0, len(clusters))
 	for _, c := clusters range {
 		ret = append(ret, makeEndpointResource(c))
@@ -167,8 +170,22 @@ func (r *Router) makeEndpointBootstrapResources() []*v2.ClusterLoadAssignment {
 	return ret
 }
 
-func (r *Router) makeRouteBootstrapResources() []*v2.Cluster {
-	clusters := r.store.GetClusters()
+func (r *Router) makeRouteBootstrapResources(ctx context.Context) []*v2.RouteConfiguration {
+	routes, err := r.store.GetRoutes(ctx)
+	if err != nil {
+		return nil
+	}
+	routeResource := makeRouteResource(routes)
+	return []*v2.RouteConfiguration{
+		routeResource,
+	}
+}
+
+func (r *Router) makeClusterBootstrapResources(ctx context.Context) []*v2.Cluster {
+	clusters, err := r.store.GetClusters(ctx)
+	if err != nil {
+		return nil
+	}
 	ret := make([]*v2.Cluster, 0, len(clusters))
 	for _, c := clusters range {
 		ret = append(ret, makeClusterResource(c))
@@ -176,20 +193,8 @@ func (r *Router) makeRouteBootstrapResources() []*v2.Cluster {
 	return ret
 }
 
-func (r *Router) makeClusterBootstrapResources() []*v2.Cluster {
-	clusters := r.store.GetClusters()
-	ret := make([]*v2.Cluster, 0, len(clusters))
-	for _, c := clusters range {
-		ret = append(ret, makeClusterResource(c))
+func (r *Router) makeListenerBootstrapResources(_ context.Context) []*v2.Listener {
+	return []*v2.Listener{
+		makeListenerResource(),
 	}
-	return ret
-}
-
-func (r *Router) makeClusterBootstrapResources() []*v2.Cluster {
-	clusters := r.store.GetClusters()
-	ret := make([]*v2.Cluster, 0, len(clusters))
-	for _, c := clusters range {
-		ret = append(ret, makeClusterResource(c))
-	}
-	return ret
 }
