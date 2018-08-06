@@ -15,7 +15,7 @@ type Store interface {
 	DeleteRoute(ctx context.Context, vhost string) error
 	GetRoute(ctx context.Context, vhost string) (*common.Route, error)
 	GetRoutes(ctx context.Context) ([]*common.Route, error)
-	GetClusters(ctx context.Context) ([])*common.Cluster, error)
+	GetClusters(ctx context.Context) ([]*common.Cluster, error)
 }
 
 func NewMysqlStore() Store {

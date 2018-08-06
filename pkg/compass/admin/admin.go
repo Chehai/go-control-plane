@@ -12,12 +12,11 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/compass/common"
 	"github.com/envoyproxy/go-control-plane/pkg/compass/routers"
 	"github.com/envoyproxy/go-control-plane/pkg/compass/stores"
-
 )
 
 type admin struct {
 	router routers.Router
-	store stores.Store
+	store  stores.Store
 }
 
 func Init(ctx context.Context, confFile string, r routers.Router, s stores.Store) error {
@@ -94,8 +93,8 @@ func upsertCluster(ctx context.Context, a admin, w http.ResponseWriter, r *http.
 
 func upsertRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
 	route := common.Route{
-		Vhost: "*"
-		Cluster: "cluster-apm"
+		Vhost:   "*",
+		Cluster: "cluster-apm",
 	}
 
 	err := a.store.UpsertRoute(ctx, &route)

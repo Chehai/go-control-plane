@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -37,18 +36,17 @@ func main() {
 
 	log.Info("Init store")
 	s := stores.NewMysqlStore()
-	err = s.Init(ctx, "todo")
+	err := s.Init(ctx, "todo")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	log.Info("Init router")
 	r := routers.NewEnvoyRouter()
-	err := r.Init(ctx, "todo")
+	err = r.Init(ctx, s, "todo")
 	if err != nil {
 		log.Fatal(err)
 	}
-
 
 	log.Info("Init admin")
 	err = admin.Init(ctx, "todo", r, s)

@@ -1,8 +1,9 @@
 package envoy
 
 import (
-	"time"
 	"context"
+	"time"
+
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/endpoint"
@@ -38,8 +39,12 @@ func (r *Router) makeClusterResources(ctx context.Context) ([]resource, error) {
 		return nil, err
 	}
 	ret := make([]resource, 0, len(clusters))
-	for _, c := clusters range {
-		ret = append(ret, resource(makeClusterResource(c)))
+	for _, c := range clusters {
+		res, err := makeClusterResource(c)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, resource(res))
 	}
 	return ret, nil
 }
@@ -50,18 +55,25 @@ func (r *Router) makeEndpointResources(ctx context.Context) ([]resource, error) 
 		return nil, err
 	}
 	ret := make([]resource, 0, len(clusters))
-	for _, c := clusters range {
-		ret = append(ret, resource(makeEndpointResource(c)))
+	for _, c := range clusters {
+		res, err := makeClusterResource(c)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, resource(res))
 	}
 	return ret, nil
 }
 
-func (r *Router) makeRouteResources(ctx context.Context) ([]*resource, error) {
+func (r *Router) makeRouteResources(ctx context.Context) ([]resource, error) {
 	routes, err := r.store.GetRoutes(ctx)
 	if err != nil {
 		return nil, err
 	}
-	routeResource := makeRouteResource(routes)
+	routeResource, err := makeRouteResource(routes)
+	if err != nil {
+		return nil, err
+	}
 	return []resource{
 		resource(routeResource),
 	}, nil
@@ -126,7 +138,7 @@ func makeRouteResource(routes []*common.Route) (*v2.RouteConfiguration, error) {
 	for _, r := range routes {
 		if c, ok := vhm[r.Cluster]; !ok {
 			vhm[r.Cluster] = route.VirtualHost{
-				Name: r.Cluster,
+				Name:    r.Cluster,
 				Domains: []string{r.Vhost},
 				Routes: []route.Route{{
 					Action: &route.Route_Route{
@@ -144,12 +156,12 @@ func makeRouteResource(routes []*common.Route) (*v2.RouteConfiguration, error) {
 	}
 
 	vhs := make([]route.VirtualHost, 0, len(vhm))
-	for _, v := vhm {
+	for _, v := range vhm {
 		vhs = append(vhs, v)
 	}
 
 	return &v2.RouteConfiguration{
-		Name: routeConfigName,
+		Name:         routeConfigName,
 		VirtualHosts: vhs,
 	}, nil
 }

@@ -125,7 +125,7 @@ func makeResponse(res []resource, typeUrl string, versionInfo string, nonce stri
 	}, nil
 }
 
-func pushResourcesToStream(s *pushStream, resources []resource, typeUrl string, versionInfo string, nonce string) error {
+func pushResourcesToStream(ps *pushStream, resources []resource, typeUrl string, versionInfo string, nonce string) error {
 	resp, err := makeResponse(resources, typeUrl, versionInfo, nonce)
 	if err != nil {
 		log.Errorf("Pushing resources %s %s %s failed: %v", typeUrl, versionInfo, nonce, err)
@@ -141,7 +141,7 @@ func (r *Router) bootstrapResources(s grpcStream, typeUrl string) error {
 		return fmt.Errorf("Pushing bootstrap resources failed: cannot find push stream for %v", s)
 	}
 	ctx := context.TODO()
-	var resources []resources
+	var resources []resource
 	var err error
 	switch typeUrl {
 	case EndpointType:
@@ -180,7 +180,7 @@ func (r *Router) pushResources(ctx context.Context, res []resource, typeUrl stri
 		cbChs[i] = ch
 		versionInfo := r.makeVersionInfo()
 		nonce := makeNonce(pushID, i)
-		err = pushResourcesToStream(s, resources, typeUrl, versionInfo, nonce)
+		err := pushResourcesToStream(s, res, typeUrl, versionInfo, nonce)
 		if err != nil {
 			log.Errorf("Pushing resources %s failed: %v", typeUrl, err)
 			return err
