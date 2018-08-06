@@ -107,26 +107,13 @@ func (s *Store) DeleteRoute(ctx context.Context, vhost string) error {
 }
 
 func (s *Store) GetRoute(ctx context.Context, vhost string) (*common.Route, error) {
-	ret := []*common.Route{}
-	rows, err := s.db.QueryContext(ctx, getRouteSQL, vhost)
+	ret := common.Route{}
+	err := s.db.QueryRowContext(ctx, getRouteSQL, vhost).Scan(&ret.Vhost, &ret.Cluster)
 	if err != nil {
 		log.Errorf("Getting route %s failed: %v", vhost, err)
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var route common.Route
-		if err := rows.Scan(&route.Vhost, &route.Cluster); err != nil {
-			log.Errorf("Getting route %s failed: %v", vhost, err)
-			return nil, err
-		}
-		ret = append(ret, &route)
-	}
-	if err = rows.Err(); err != nil {
-		log.Errorf("Getting route %s failed: %v", vhost, err)
-		return nil, err
-	}
-	return ret[0], nil
+	return &ret, nil
 }
 
 func (s *Store) GetRoutes(ctx context.Context) ([]*common.Route, error) {
@@ -138,12 +125,12 @@ func (s *Store) GetRoutes(ctx context.Context) ([]*common.Route, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var route common.Route
+		route := new(common.Route)
 		if err := rows.Scan(&route.Vhost, &route.Cluster); err != nil {
 			log.Errorf("Geting routes failed: %v", err)
 			return nil, err
 		}
-		ret = append(ret, &route)
+		ret = append(ret, route)
 	}
 	if err = rows.Err(); err != nil {
 		log.Errorf("Getting routes failed: %v", err)
@@ -166,12 +153,12 @@ func (s *Store) GetClusters(ctx context.Context) ([]*common.Cluster, error) {
 			log.Errorf("Geting cluster failed: %v", err)
 			return nil, err
 		}
-		cluster := common.Cluster{}
-		if err := json.Unmarshal([]byte(conf), &cluster); err != nil {
+		cluster := new(common.Cluster)
+		if err := json.Unmarshal([]byte(conf), cluster); err != nil {
 			log.Errorf("Geting cluster failed: %v", err)
 			return nil, err
 		}
-		ret = append(ret, &cluster)
+		ret = append(ret, cluster)
 	}
 	if err = rows.Err(); err != nil {
 		log.Errorf("Getting clusters failed: %v", err)
@@ -189,7 +176,11 @@ func createDb(ctx context.Context, user string, password string, host string, po
 	}
 	defer db.Close()
 
-	_, err = db.ExecContext(ctx, "CREATE DATABASE IF NOT EXISTS ?", dbName)
+	// We assume dbName is from a trusted source like a configuration file, so no SQL injection here.
+	// golang's database/sql package does not support ? placeholder in CREATE TABLE statements.
+	// golang's database/sql does not expose any quoting method either.
+	// https://github.com/golang/go/issues/18478
+	_, err = db.ExecContext(ctx, "CREATE DATABASE IF NOT EXISTS "+dbName)
 	if err != nil {
 		log.Errorf("Creating database %s failed: %v", dbName, err)
 		return err

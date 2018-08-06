@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -51,9 +52,8 @@ func startServer(ctx context.Context, port uint, a admin) error {
 }
 
 type handleFuncType func(context.Context, admin, http.ResponseWriter, *http.Request)
-type httpHandleFuncType func(http.ResponseWriter, *http.Request)
 
-func httpHandleFunc(ctx context.Context, a admin, f handleFuncType) httpHandleFuncType {
+func httpHandleFunc(ctx context.Context, a admin, f handleFuncType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 		defer cancel()
@@ -62,100 +62,138 @@ func httpHandleFunc(ctx context.Context, a admin, f handleFuncType) httpHandleFu
 }
 
 func upsertCluster(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
-	// validate cluster
-	// save cluster to db
-	// db.parse
-
-	cluster := common.Cluster{
-		Name: "cluster-apm",
-		Endpoints: []common.Endpoint{
-			common.Endpoint{
-				Host: "162.216.20.141",
-				Port: 80,
-			},
-		},
-	}
-
-	err := a.store.UpsertCluster(ctx, &cluster)
+	cluster, err := parseCluster(r)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		http.Error(w, "Parsing cluster failed", http.StatusUnsupportedMediaType)
 		return
 	}
 
-	err = a.router.UpsertCluster(ctx, &cluster)
+	err = a.store.UpsertCluster(ctx, cluster)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		log.Errorf("Upserting cluster to store failed: %v", err)
+		http.Error(w, "Upserting cluster to store failed", http.StatusUnprocessableEntity)
 		return
 	}
 
-	fmt.Fprintf(w, "success")
+	err = a.router.UpsertCluster(ctx, cluster)
+	if err != nil {
+		log.Errorf("Upserting cluster to router failed: %v", err)
+		http.Error(w, "Upserting cluster to router failed", http.StatusUnprocessableEntity)
+		return
+	}
+
+	fmt.Fprintf(w, "Upserting clustser succeeded")
 }
 
 func upsertRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
-	route := common.Route{
-		Vhost:   "*",
-		Cluster: "cluster-apm",
-	}
-
-	err := a.store.UpsertRoute(ctx, &route)
+	route, err := parseRoute(r)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		http.Error(w, "Parsing route failed", http.StatusUnsupportedMediaType)
 		return
 	}
 
-	err = a.router.UpsertRoute(ctx, &route)
+	err = a.store.UpsertRoute(ctx, route)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		log.Errorf("Upserting route to store failed: %v", err)
+		http.Error(w, "Upserting route to store failed", http.StatusUnprocessableEntity)
 		return
 	}
 
-	fmt.Fprintf(w, "success")
+	err = a.router.UpsertRoute(ctx, route)
+	if err != nil {
+		log.Errorf("Upserting cluster to router failed: %v", err)
+		http.Error(w, "Upserting cluster to router failed", http.StatusUnprocessableEntity)
+		return
+	}
+
+	fmt.Fprintf(w, "Upserting route succeeded")
 }
 
 func deleteRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
-	vhost := "test"
-
-	err := a.store.DeleteRoute(ctx, vhost)
+	route, err := parseRoute(r)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		http.Error(w, "Parsing route failed", http.StatusUnsupportedMediaType)
+		return
+	}
+	vhost := route.Vhost
+
+	err = a.store.DeleteRoute(ctx, vhost)
+	if err != nil {
+		log.Errorf("Deleting route from store failed: %v", err)
+		http.Error(w, "Deleting route from store failed", http.StatusUnprocessableEntity)
 		return
 	}
 
 	err = a.router.DeleteRoute(ctx, vhost)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		log.Errorf("Deleting route from router failed: %v", err)
+		http.Error(w, "Deleting route from router failed", http.StatusUnprocessableEntity)
 		return
 	}
 
-	fmt.Fprintf(w, "success")
+	fmt.Fprintf(w, "Deleting route succeeded")
 }
 
 func deleteCluster(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
-	clusterName := "test"
-
-	err := a.store.DeleteCluster(ctx, clusterName)
+	cluster, err := parseCluster(r)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		http.Error(w, "Decoding cluster json failed", http.StatusUnsupportedMediaType)
+		return
+	}
+	clusterName := cluster.Name
+
+	err = a.store.DeleteCluster(ctx, clusterName)
+	if err != nil {
+		log.Errorf("Deleting cluster from store failed: %v", err)
+		http.Error(w, "Deleting cluster from store failed", http.StatusUnprocessableEntity)
 		return
 	}
 
 	err = a.router.DeleteCluster(ctx, clusterName)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		log.Errorf("Deleting cluster from router failed: %v", err)
+		http.Error(w, "Deleting cluster from router failed", http.StatusUnprocessableEntity)
 		return
 	}
 
-	fmt.Fprintf(w, "success")
+	fmt.Fprintf(w, "Deleting cluster succeeded")
 }
 
 func getRoute(ctx context.Context, a admin, w http.ResponseWriter, r *http.Request) {
-	vhost := "test"
+	rte, err := parseRoute(r)
+	if err != nil {
+		http.Error(w, "Parsing route failed", http.StatusUnsupportedMediaType)
+	}
+	vhost := rte.Vhost
 
 	route, err := a.store.GetRoute(ctx, vhost)
 	if err != nil {
-		fmt.Fprintf(w, "error")
+		log.Errorf("Getting route from store failed: %v", err)
+		http.Error(w, "Getting route from store failed", http.StatusUnprocessableEntity)
 		return
 	}
 
-	fmt.Fprintf(w, "success: %s", route.Cluster)
+	fmt.Fprintf(w, "%s", route.Cluster)
+}
+
+func parseCluster(r *http.Request) (*common.Cluster, error) {
+	decoder := json.NewDecoder(r.Body)
+	var cluster common.Cluster
+	err := decoder.Decode(&cluster)
+	if err != nil {
+		log.Errorf("Decoding cluster json failed: %v", err)
+		return nil, err
+	}
+	return &cluster, nil
+}
+
+func parseRoute(r *http.Request) (*common.Route, error) {
+	decoder := json.NewDecoder(r.Body)
+	var route common.Route
+	err := decoder.Decode(&route)
+	if err != nil {
+		log.Errorf("Decoding route json failed: %v", err)
+		return nil, err
+	}
+	return &route, nil
 }

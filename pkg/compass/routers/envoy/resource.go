@@ -20,7 +20,7 @@ const (
 	routeConfigName = "route-apm"
 	listenerName    = "listener-apm"
 	listenerAddress = "0.0.0.0"
-	listenerPort    = 9909
+	listenerPort    = 10000
 )
 
 func (r *Router) makeListenerResources(_ context.Context) ([]resource, error) {
@@ -56,7 +56,7 @@ func (r *Router) makeEndpointResources(ctx context.Context) ([]resource, error) 
 	}
 	ret := make([]resource, 0, len(clusters))
 	for _, c := range clusters {
-		res, err := makeClusterResource(c)
+		res, err := makeEndpointResource(c)
 		if err != nil {
 			return nil, err
 		}
@@ -134,13 +134,19 @@ func makeListenerResource() (*v2.Listener, error) {
 }
 
 func makeRouteResource(routes []*common.Route) (*v2.RouteConfiguration, error) {
-	vhm := make(map[string]route.VirtualHost)
+	vhm := make(map[string]*route.VirtualHost)
 	for _, r := range routes {
-		if c, ok := vhm[r.Cluster]; !ok {
-			vhm[r.Cluster] = route.VirtualHost{
+		pvh, ok := vhm[r.Cluster]
+		if !ok {
+			pvh = &route.VirtualHost{
 				Name:    r.Cluster,
-				Domains: []string{r.Vhost},
+				Domains: []string{},
 				Routes: []route.Route{{
+					Match: route.RouteMatch{
+						PathSpecifier: &route.RouteMatch_Prefix{
+							Prefix: "/",
+						},
+					},
 					Action: &route.Route_Route{
 						Route: &route.RouteAction{
 							ClusterSpecifier: &route.RouteAction_Cluster{
@@ -150,14 +156,14 @@ func makeRouteResource(routes []*common.Route) (*v2.RouteConfiguration, error) {
 					},
 				}},
 			}
-		} else {
-			c.Domains = append(c.Domains, r.Vhost)
 		}
+		pvh.Domains = append(pvh.Domains, r.Vhost)
+		vhm[r.Cluster] = pvh
 	}
 
 	vhs := make([]route.VirtualHost, 0, len(vhm))
 	for _, v := range vhm {
-		vhs = append(vhs, v)
+		vhs = append(vhs, *v)
 	}
 
 	return &v2.RouteConfiguration{

@@ -6,11 +6,11 @@ type Endpoint struct {
 }
 
 type Cluster struct {
-	Name      string `json:"name"`
+	Name      string     `json:"name"`
 	Endpoints []Endpoint `json:"endpoints"`
 }
 
 type Route struct {
-	Vhost string
-	Cluster string
+	Vhost   string `json:"vhost"`
+	Cluster string `json:"cluster"`
 }
