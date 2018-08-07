@@ -16,11 +16,13 @@ import (
 )
 
 const (
-	xdsCluster      = "cluster-xds"
-	routeConfigName = "route-apm"
-	listenerName    = "listener-apm"
-	listenerAddress = "0.0.0.0"
-	listenerPort    = 10000
+	xdsCluster            = "cluster-xds"
+	routeConfigName       = "route-apm"
+	listenerName          = "listener-apm"
+	listenerAddress       = "0.0.0.0"
+	listenerPort          = 10000
+	dnsRefreshRate        = 1 * time.Minute
+	clusterConnectTimeout = 30 * time.Second
 )
 
 func (r *Router) makeListenerResources(_ context.Context) ([]resource, error) {
@@ -200,23 +202,30 @@ func makeEndpointResource(cluster *common.Cluster) (*v2.ClusterLoadAssignment, e
 }
 
 func makeClusterResource(cluster *common.Cluster) (*v2.Cluster, error) {
-	return &v2.Cluster{
-		Name:           cluster.Name,
-		ConnectTimeout: 30 * time.Second,
-		Type:           v2.Cluster_EDS,
-		EdsClusterConfig: &v2.Cluster_EdsClusterConfig{
-			EdsConfig: &core.ConfigSource{
-				ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
-					ApiConfigSource: &core.ApiConfigSource{
-						ApiType: core.ApiConfigSource_GRPC,
-						GrpcServices: []*core.GrpcService{{
-							TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
-								EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: xdsCluster},
-							},
-						}},
+	endpoints := cluster.Endpoints
+	hosts := make([]*core.Address, len(endpoints))
+	for i, e := range endpoints {
+		hosts[i] = &core.Address{
+			Address: &core.Address_SocketAddress{
+				SocketAddress: &core.SocketAddress{
+					Protocol: core.TCP,
+					Address:  e.Host,
+					PortSpecifier: &core.SocketAddress_PortValue{
+						PortValue: e.Port,
 					},
 				},
 			},
-		},
+		}
+	}
+	// cannot take address of constants
+	localDNSRefreshRate := dnsRefreshRate
+	return &v2.Cluster{
+		Name:            cluster.Name,
+		ConnectTimeout:  clusterConnectTimeout,
+		Type:            v2.Cluster_STRICT_DNS,
+		LbPolicy:        v2.Cluster_ROUND_ROBIN,
+		DnsLookupFamily: v2.Cluster_V4_ONLY,
+		DnsRefreshRate:  &localDNSRefreshRate,
+		Hosts:           hosts,
 	}, nil
 }
