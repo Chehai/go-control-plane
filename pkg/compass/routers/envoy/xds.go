@@ -40,11 +40,8 @@ type resource interface {
 const grpcMaxConcurrentStreams = 1000000
 
 type grpcService interface {
-	v2.EndpointDiscoveryServiceServer
 	v2.ClusterDiscoveryServiceServer
 	v2.RouteDiscoveryServiceServer
-	v2.ListenerDiscoveryServiceServer
-	discovery.AggregatedDiscoveryServiceServer
 
 	// Fetch is the universal fetch method.
 	Fetch(context.Context, *v2.DiscoveryRequest) (*v2.DiscoveryResponse, error)
@@ -60,11 +57,8 @@ func (r *Router) startGrpcServer(ctx context.Context) error {
 		return err
 	}
 
-	discovery.RegisterAggregatedDiscoveryServiceServer(grpcServer, r)
-	v2.RegisterEndpointDiscoveryServiceServer(grpcServer, r)
 	v2.RegisterClusterDiscoveryServiceServer(grpcServer, r)
 	v2.RegisterRouteDiscoveryServiceServer(grpcServer, r)
-	v2.RegisterListenerDiscoveryServiceServer(grpcServer, r)
 
 	log.WithFields(log.Fields{"port": r.port}).Infof("Envoy Management Server listening on port %v", r.port)
 	go func() {
@@ -144,22 +138,21 @@ func (r *Router) bootstrapResources(s grpcStream, typeUrl string) error {
 	var resources []resource
 	var err error
 	switch typeUrl {
-	case EndpointType:
-		resources, err = r.makeEndpointResources(ctx)
 	case ClusterType:
 		resources, err = r.makeClusterResources(ctx)
 	case RouteType:
 		resources, err = r.makeRouteResources(ctx)
-	case ListenerType:
-		resources, err = r.makeListenerResources(ctx)
+	default:
+		log.Errorf("Pushing bootstrap resources % failed: unknown type", typeUrl)
+		return fmt.Errorf("Pushing bootstrap resources % failed: unknown type", typeUrl)
 	}
 	if err != nil {
-		log.Errorf("Bootstrapping resources %s failed: %v", typeUrl, err)
+		log.Errorf("Pushing bootstrap resources %s failed: %v", typeUrl, err)
 		return err
 	}
 	err = pushResourcesToStream(ps, resources, typeUrl, r.makeVersionInfo(), "0-0")
 	if err != nil {
-		log.Errorf("Bootstrapping resources %s failed: %v", typeUrl, err)
+		log.Errorf("Pushing bootstrap resources %s failed: %v", typeUrl, err)
 		return err
 	}
 	return nil
@@ -248,15 +241,6 @@ func (r *Router) processRequest(req *v2.DiscoveryRequest, s grpcStream) error {
 	return nil
 }
 
-func (r *Router) StreamAggregatedResources(stream discovery.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
-	return r.handleGrpcStream(stream, AnyType)
-}
-
-func (r *Router) StreamEndpoints(stream v2.EndpointDiscoveryService_StreamEndpointsServer) error {
-	log.Debug("Started to stream endpoints.")
-	return r.handleGrpcStream(stream, EndpointType)
-}
-
 func (r *Router) StreamClusters(stream v2.ClusterDiscoveryService_StreamClustersServer) error {
 	return r.handleGrpcStream(stream, ClusterType)
 }
@@ -265,8 +249,16 @@ func (r *Router) StreamRoutes(stream v2.RouteDiscoveryService_StreamRoutesServer
 	return r.handleGrpcStream(stream, RouteType)
 }
 
+func (r *Router) StreamAggregatedResources(stream discovery.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
+	return errors.New("not implemented")
+}
+
+func (r *Router) StreamEndpoints(stream v2.EndpointDiscoveryService_StreamEndpointsServer) error {
+	return errors.New("not implemented")
+}
+
 func (r *Router) StreamListeners(stream v2.ListenerDiscoveryService_StreamListenersServer) error {
-	return r.handleGrpcStream(stream, ListenerType)
+	return errors.New("not implemented")
 }
 
 func (r *Router) IncrementalAggregatedResources(_ discovery.AggregatedDiscoveryService_IncrementalAggregatedResourcesServer) error {

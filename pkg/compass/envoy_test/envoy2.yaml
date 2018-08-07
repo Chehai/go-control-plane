@@ -8,12 +8,6 @@ node:
   cluster: envoy-apm
   id: envoy-apm-2
 dynamic_resources:
-  lds_config:
-    api_config_source:
-      api_type: GRPC
-      grpc_services:
-        envoy_grpc:
-          cluster_name: cluster-xds
   cds_config:
     api_config_source:
       api_type: GRPC
@@ -21,9 +15,38 @@ dynamic_resources:
         envoy_grpc:
           cluster_name: cluster-xds
 static_resources:
+  listeners:
+  - name: listener-apm
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 10000
+    filter_chains:
+    - filters:
+      - name: envoy.http_connection_manager
+        config:
+          stat_prefix: http-apm
+          codec_type: auto
+          rds:
+            route_config_name: route-apm
+            config_source:
+              api_config_source:
+                api_type: GRPC
+                grpc_services:
+                  envoy_grpc:
+                    cluster_name: cluster-xds
+          http_filters:
+          - name: envoy.lua
+            config:
+              inline_code: |
+                function envoy_on_request(request_handle)
+                  request_handle:headers():add("X-AppFolio-XID", request_handle:headers():get("X-Request-Id"))
+                  request_handle:headers():add("Af-Remote-Address", request_handle:headers():get("X-Forwarded-For"))
+                end
+          - name: envoy.router
   clusters:
   - name: cluster-xds
-    connect_timeout: 0.25s
+    connect_timeout: 30s
     type: STRICT_DNS
     lb_policy: ROUND_ROBIN
     http2_protocol_options: {}
@@ -31,47 +54,3 @@ static_resources:
     - socket_address:
         address: host.docker.internal
         port_value: 18088
-# - name: cluster_apm
-#   connect_timeout: 0.25s
-#   lb_policy: ROUND_ROBIN
-#   type: EDS
-#   eds_cluster_config:
-#     eds_config:
-#       api_config_source:
-#         api_type: GRPC
-#         grpc_services:
-#           envoy_grpc:
-#             cluster_name: cluster_xds
-# static_resources:
-#   listeners:
-#   - name: listener_apm
-#     address:
-#       socket_address:
-#         address: 0.0.0.0
-#         port_value: 9909
-#     filter_chains:
-#     - filters:
-#       - name: envoy.http_connection_manager
-#         config:
-#           stat_prefix: ingress_http
-#           codec_type: AUTO
-#           rds:
-#             route_config_name: route_apm
-#           config_source:
-#             api_config_source:
-#               api_type: GRPC
-#               grpc_services:
-#                 envoy_grpc:
-#                   cluster_name: xds_cluster
-#             config_source:
-#             route_config_name:
-#           route_config:
-#             name: route_apm
-#             virtual_hosts:
-#             - name: vhosts_apm
-#               domains: ["*"]
-#               routes:
-#               - match: { prefix: "/" }
-#                 route: { cluster: cluster_apm }
-#           http_filters:
-#           - name: envoy.router

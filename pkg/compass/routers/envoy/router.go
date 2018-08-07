@@ -80,12 +80,6 @@ func (r *Router) pushClusters(ctx context.Context) error {
 		log.Errorf("Pushing clusters failed: %v", err)
 		return err
 	}
-	endpointResources, err := r.makeEndpointResources(ctx)
-	err = r.pushResources(ctx, endpointResources, EndpointType)
-	if err != nil {
-		log.Errorf("Pushing endpoints failed: %v", err)
-		return err
-	}
 	return nil
 }
 
